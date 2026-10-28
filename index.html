@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OBS 时钟</title>
+<style>
+  :root{
+    --color: #ffffff;
+    --outline: #000000;
+    --date-color: #ffffff;
+    --o: 0.05em;                        /* 描边距离，由 outlineWidth 换算后写入 */
+    --d: calc(var(--o) * 0.7071);       /* 斜向分量，保证描边近似圆形 */
+    --blur: calc(var(--o) * 0.25);      /* 轻微模糊，消除多层阴影的锯齿 */
+    --fs: min(46vh, 23.4vw);            /* 时间字号，由 size 参数改写；宽度上限保证 8 位数字不溢出 */
+    --date-em: 0.22em;                  /* 日期字号，相对时间字号，由 dateSize 参数改写 */
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;   /* OBS 浏览器源支持 alpha，透明底不挡画面 */
+    overflow: hidden;
+  }
+
+  body{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC",
+                 "Noto Sans SC", "Hiragino Sans GB", Roboto, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
+  }
+
+  .clock{
+    font-size: var(--fs);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1em;
+    padding: 0.04em 0.1em;
+    max-width: 100%;
+  }
+
+  .clock.hide-date .date{ display: none; }
+
+  .time{
+    font-size: 1em;
+    line-height: 1.04;
+    font-weight: 700;
+    white-space: nowrap;
+    color: var(--color);
+    font-variant-numeric: tabular-nums;     /* 数字等宽，秒数跳动时不抖 */
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    letter-spacing: 0.01em;
+  }
+
+  .sep{
+    display: inline-block;
+    transition: opacity 60ms linear;
+  }
+
+  .time.no-colon .sep{ opacity: 0; }
+
+  .period{
+    font-size: 0.30em;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    margin-left: 0.22em;
+    opacity: 0.95;
+  }
+
+  .period[hidden]{ display: none; }
+
+  .date{
+    font-size: var(--date-em);
+    line-height: 1.25;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    color: var(--date-color);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.96;
+  }
+
+  /* 8 方向 text-shadow 模拟外描边：不侵蚀字形，粗细可与字号成比例 */
+  .time, .date{
+    text-shadow:
+      var(--o) 0 var(--blur) var(--outline),
+      calc(var(--o) * -1) 0 var(--blur) var(--outline),
+      0 var(--o) var(--blur) var(--outline),
+      0 calc(var(--o) * -1) var(--blur) var(--outline),
+      var(--d) var(--d) var(--blur) var(--outline),
+      calc(var(--d) * -1) var(--d) var(--blur) var(--outline),
+      var(--d) calc(var(--d) * -1) var(--blur) var(--outline),
+      calc(var(--d) * -1) calc(var(--d) * -1) var(--blur) var(--outline);
+  }
+
+  /* ---------- help / debug 覆盖层（仅调试用，正式出画面时不要开） ---------- */
+  .panel{
+    position: fixed;
+    inset: 0;
+    display: none;
+    overflow: auto;
+    padding: 2vh 2vw 110px;             /* 底部留白，避免被 debug 徽标压住 */
+    background: #0b0e13;
+    color: #e8eef6;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    line-height: 1.55;
+    z-index: 4;
+  }
+  .panel.show{ display: block; }
+  .panel h1{ font-size: 16px; margin: 0 0 8px; }
+  .panel p{ margin: 0 0 10px; color: #b6c3d4; }
+  .panel table{ border-collapse: collapse; width: 100%; font-size: 12px; }
+  .panel th, .panel td{
+    border-bottom: 1px solid rgba(255,255,255,.12);
+    padding: 5px 6px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .panel th{ color: #8fb3d9; font-weight: 600; white-space: nowrap; }
+  .panel code{
+    background: rgba(255,255,255,.10);
+    padding: 0 4px;
+    border-radius: 3px;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+
+  .badge{
+    position: fixed;
+    left: 6px;
+    top: 6px;
+    display: none;
+    max-width: calc(100% - 12px);
+    max-height: calc(100% - 12px);
+    overflow: auto;
+    padding: 3px 6px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.88);
+    color: #9fe6a0;
+    font: 11px/1.45 ui-monospace, Consolas, monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    z-index: 6;
+  }
+  .badge.show{ display: block; }
+</style>
+</head>
+<body>
+
+<div class="clock" id="clock">
+  <div class="time" id="time"><span id="hh">--</span><span class="sep">:</span><span id="mm">--</span><span class="sep">:</span><span id="ss">--</span><span class="period" id="period" hidden></span></div>
+  <div class="date" id="date">--</div>
+</div>
+
+<div class="panel" id="help"></div>
+<div class="badge" id="badge"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var DEFAULT_TZ = 'Asia/Shanghai';
+  var DEFAULT_LANG = 'zh-CN';
+  var DEFAULT_COLOR = '#ffffff';
+  var DEFAULT_OUTLINE = '#000000';
+  var DEFAULT_OUTLINE_WIDTH = 5;      // 单位：时间字号的百分比
+  var DEFAULT_SIZE = 46;              // 时间字号，单位：源高度的百分比
+  var DEFAULT_DATE_SIZE = 22;         // 日期字号，单位：时间字号的百分比
+  var FS_VW_CAP = 23.4;               // 8 位数字在源宽度内的物理上限（vw），防止放大后溢出
+  var DATE_FORMATS = ['iso', 'long', 'us', 'eu', 'weekday'];
+
+  var q = new URLSearchParams(location.search);
+  var warnings = [];
+
+  function warn(msg) {
+    warnings.push(msg);
+    try { console.warn('[clock] ' + msg); } catch (e) {}
+  }
+
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /* ---------------- 参数读取 ---------------- */
+
+  function readRaw(name) {
+    var v = q.get(name);
+    return v == null ? null : String(v).trim();
+  }
+
+  function readBool(name, def) {
+    var v = readRaw(name);
+    if (v == null || v === '') return def;
+    v = v.toLowerCase();
+    if (v === '1' || v === 'true' || v === 'yes' || v === 'on' || v === 'y') return true;
+    if (v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'n') return false;
+    return def;
+  }
+
+  function readEnum(name, allowed, def) {
+    var v = readRaw(name);
+    if (v == null || v === '') return def;
+    v = v.toLowerCase();
+    return allowed.indexOf(v) >= 0 ? v : def;
+  }
+
+  // 只接受 HEX；# 可写可省；最终交给 CSS.supports 判定，避免把任意字符串塞进样式
+  function readColor(name, def) {
+    var v = readRaw(name);
+    if (!v) return def;
+    var s = v.charAt(0) === '#' ? v.slice(1) : v;
+    if (/^0x/i.test(s)) s = s.slice(2);
+    if (!/^([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(s)) {
+      warn('颜色参数 ' + name + '="' + v + '" 无效，已使用默认值 ' + def);
+      return def;
+    }
+    var hex = '#' + s.toLowerCase();
+    try {
+      var css = window.CSS;
+      if (!css || typeof css.supports !== 'function' || !css.supports('color', hex)) {
+        return def;
+      }
+    } catch (e) { return def; }
+    return hex;
+  }
+
+  // 纯数字 / 带 % => 百分比；带 px => 绝对像素
+  function readLength(name, def, maxPct, maxPx) {
+    var v = readRaw(name);
+    if (!v) return { value: def, unit: '%' };
+    var m = /^(-?\d+(?:\.\d+)?)\s*px$/i.exec(v);
+    if (m) {
+      var px = parseFloat(m[1]);
+      if (isFinite(px)) return { value: clamp(px, 0, maxPx), unit: 'px' };
+    }
+    m = /^(-?\d+(?:\.\d+)?)\s*%?$/.exec(v);
+    if (m) {
+      var pct = parseFloat(m[1]);
+      if (isFinite(pct)) return { value: clamp(pct, 0, maxPct), unit: '%' };
+    }
+    warn(name + '="' + v + '" 无效，已使用默认值 ' + def);
+    return { value: def, unit: '%' };
+  }
+
+  function readOutlineWidth(name, def) {
+    return readLength(name, def, 30, 200);
+  }
+
+  /* ---------------- 时区解析 ---------------- */
+
+  // 返回值既是合法性校验，也是该时区的规范拼写；无效返回 null
+  function canonicalTZ(tz) {
+    try {
+      return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone || null;
+    } catch (e) { return null; }
+  }
+
+  // IANA 名称大小写敏感，做一次 "Asia/Shanghai" 式规范化后再试
+  function normalizeTZName(raw) {
+    var s = String(raw).trim().replace(/\s+/g, '');
+    if (!s) return '';
+    if (/^(utc|gmt|z|utc0|gmt0)$/i.test(s)) return 'UTC';
+    return s.split('/').map(function (seg) {
+      return seg.split('_').map(function (w) {
+        if (!w) return w;
+        return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+      }).join('_');
+    }).join('/');
+  }
+
+  function offsetLabel(minutes) {
+    var sign = minutes < 0 ? '-' : '+';
+    var a = Math.abs(minutes);
+    var h = Math.floor(a / 60);
+    var m = a % 60;
+    return sign + h + (m ? ':' + (m < 10 ? '0' + m : m) : '');
+  }
+
+  var tzRaw = readRaw('tz');
+  var offsetRaw = readRaw('offset');
+  var tzMode = 'iana';       // 'iana' | 'local' | 'offset'
+  var timeZone = null;       // null => 使用本机时区
+  var offsetMin = null;      // 仅 tzMode === 'offset' 时有效
+  var tzInfo = '';
+
+  if (tzRaw != null && tzRaw !== '') {
+    if (/^local$/i.test(tzRaw)) {
+      tzMode = 'local';
+      tzInfo = '本机时区';
+    } else if (canonicalTZ(tzRaw)) {
+      var canon = canonicalTZ(tzRaw);
+      timeZone = tzRaw;
+      // 仅大小写不同（如 asia/shanghai）时显示规范拼写；别名（Asia/Kolkata → Asia/Calcutta）保留用户输入
+      tzInfo = canon.toLowerCase() === tzRaw.toLowerCase() ? canon : tzRaw;
+    } else {
+      var norm = normalizeTZName(tzRaw);
+      var canonNorm = norm ? canonicalTZ(norm) : null;
+      if (canonNorm) {
+        timeZone = norm;
+        tzInfo = canonNorm + '（已规范化）';
+      } else {
+        timeZone = DEFAULT_TZ;
+        tzInfo = DEFAULT_TZ + '（回退）';
+        warn('时区 "' + tzRaw + '" 无效，已回退到 ' + DEFAULT_TZ +
+             '。请使用 IANA 名称，如 Asia/Shanghai、America/New_York、Europe/London。');
+      }
+    }
+  } else if (offsetRaw != null && offsetRaw !== '') {
+    var offN = parseInt(offsetRaw, 10);
+    if (isFinite(offN) && offN >= -840 && offN <= 840) {
+      tzMode = 'offset';
+      offsetMin = offN;
+      tzInfo = 'UTC' + offsetLabel(offN) + '（固定偏移）';
+    } else {
+      timeZone = DEFAULT_TZ;
+      tzInfo = DEFAULT_TZ + '（回退）';
+      warn('offset "' + offsetRaw + '" 无效（应为 -840 ~ 840 的分钟数），已回退到 ' + DEFAULT_TZ);
+    }
+  } else {
+    timeZone = DEFAULT_TZ;
+    tzInfo = DEFAULT_TZ + '（默认）';
+  }
+
+  var fmtTZ = tzMode === 'offset' ? 'UTC' : (timeZone || undefined);
+
+  /* ---------------- 语言与格式化器 ---------------- */
+
+  var LANG_ALIASES = ['local', 'auto', 'system'];
+
+  function isValidLang(v) {
+    try { new Intl.DateTimeFormat(v); return true; } catch (e) { return false; }
+  }
+
+  // 取运行环境（即 OBS 所在系统）的首选语言；取不到返回空串
+  function systemLang() {
+    try {
+      if (typeof navigator === 'undefined' || !navigator) return '';
+      var list = navigator.languages;
+      if (list && list.length && list[0]) return String(list[0]);
+      return navigator.language ? String(navigator.language) : '';
+    } catch (e) { return ''; }
+  }
+
+  var langRaw = readRaw('lang');
+  var lang = DEFAULT_LANG;
+  var langInfo = DEFAULT_LANG + '（默认）';
+
+  if (langRaw && LANG_ALIASES.indexOf(langRaw.toLowerCase()) >= 0) {
+    var sysLang = systemLang();
+    if (sysLang && isValidLang(sysLang)) {
+      lang = sysLang;
+      langInfo = sysLang + '（跟随系统）';
+    } else {
+      langInfo = DEFAULT_LANG + '（系统语言不可用，已回退）';
+      warn('取不到系统语言，lang 已回退到 ' + DEFAULT_LANG);
+    }
+  } else if (langRaw) {
+    if (isValidLang(langRaw)) {
+      lang = langRaw;
+      langInfo = langRaw;
+    } else {
+      langInfo = DEFAULT_LANG + '（回退）';
+      warn('lang "' + langRaw + '" 无效，已回退到 ' + DEFAULT_LANG);
+    }
+  }
+
+  var h24 = readBool('h24', true);
+  var dateFmtName = readEnum('dateFmt', DATE_FORMATS, 'long');
+  var blink = readBool('blink', false);
+  var showDate = readBool('showDate', true);
+  var debug = readBool('debug', false);
+  var help = readBool('help', false);
+
+  var timeOpts = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+  if (fmtTZ) timeOpts.timeZone = fmtTZ;
+  if (h24) timeOpts.hourCycle = 'h23';     // 强制 h23，避免部分 locale 把午夜显示成 24:00
+  else timeOpts.hour12 = true;
+
+  var timeFmt;
+  try {
+    timeFmt = new Intl.DateTimeFormat(lang, timeOpts);
+  } catch (e) {
+    delete timeOpts.hourCycle;
+    timeOpts.hour12 = h24 ? false : true;
+    timeFmt = new Intl.DateTimeFormat(lang, timeOpts);
+  }
+
+  var dateOpts;
+  if (dateFmtName === 'iso' || dateFmtName === 'us' || dateFmtName === 'eu') {
+    dateOpts = { year: 'numeric', month: '2-digit', day: '2-digit' };
+  } else if (dateFmtName === 'weekday') {
+    dateOpts = { weekday: 'long' };
+  } else {
+    dateOpts = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+  }
+  if (fmtTZ) dateOpts.timeZone = fmtTZ;
+
+  var dateFmt;
+  try {
+    dateFmt = new Intl.DateTimeFormat(lang, dateOpts);
+  } catch (e) {
+    dateFmt = new Intl.DateTimeFormat(DEFAULT_LANG, { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  /* ---------------- DOM ---------------- */
+
+  var clockEl = document.getElementById('clock');
+  var timeEl = document.getElementById('time');
+  var hhEl = document.getElementById('hh');
+  var mmEl = document.getElementById('mm');
+  var ssEl = document.getElementById('ss');
+  var periodEl = document.getElementById('period');
+  var dateEl = document.getElementById('date');
+
+  if (!showDate) clockEl.classList.add('hide-date');
+
+  var color = readColor('color', DEFAULT_COLOR);
+  var outline = readColor('outline', DEFAULT_OUTLINE);
+  var dateColorRaw = readRaw('dateColor');
+  var dateColor = dateColorRaw ? readColor('dateColor', color) : color;
+
+  var rootStyle = document.documentElement.style;
+  rootStyle.setProperty('--color', color);
+  rootStyle.setProperty('--outline', outline);
+  rootStyle.setProperty('--date-color', dateColor);
+
+  var ow = readOutlineWidth('outlineWidth', DEFAULT_OUTLINE_WIDTH);
+  var size = readLength('size', DEFAULT_SIZE, 70, 2000);
+  var dateSize = readLength('dateSize', DEFAULT_DATE_SIZE, 200, 400);
+
+  function applySizes() {
+    if (size.unit === 'px') {
+      rootStyle.setProperty('--fs', size.value + 'px');
+    } else {
+      // 先按源高度取百分比，再受「源宽度装得下 8 位数字」的上限约束
+      rootStyle.setProperty('--fs', 'min(' + size.value + 'vh, ' + FS_VW_CAP + 'vw)');
+    }
+    if (dateSize.unit === 'px') {
+      rootStyle.setProperty('--date-em', dateSize.value + 'px');
+    } else {
+      rootStyle.setProperty('--date-em', (dateSize.value / 100).toFixed(4) + 'em');
+    }
+  }
+
+  function applyOutline() {
+    var em;
+    if (ow.unit === 'px') {
+      var fs = parseFloat(getComputedStyle(clockEl).fontSize);
+      if (!isFinite(fs) || fs <= 0) fs = 100;
+      em = ow.value / fs;
+    } else {
+      em = ow.value / 100;
+    }
+    rootStyle.setProperty('--o', em.toFixed(4) + 'em');
+  }
+
+  function relayout() {
+    applySizes();
+    applyOutline();
+  }
+
+  relayout();
+  window.addEventListener('resize', relayout);
+  if (typeof ResizeObserver === 'function') {
+    try { new ResizeObserver(relayout).observe(clockEl); } catch (e) {}
+  }
+
+  /* ---------------- 渲染 ---------------- */
+
+  function pad2(v) {
+    var s = String(v);
+    return s.length >= 2 ? s : '0' + s;
+  }
+
+  function setText(el, v) {
+    if (el.textContent !== v) el.textContent = v;
+  }
+
+  function shiftDate(d) {
+    return offsetMin == null ? d : new Date(d.getTime() + offsetMin * 60000);
+  }
+
+  function formatDate(d) {
+    if (dateFmtName === 'iso' || dateFmtName === 'us' || dateFmtName === 'eu') {
+      var parts = dateFmt.formatToParts(d);
+      var y = '', mo = '', da = '';
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        if (p.type === 'year') y = p.value;
+        else if (p.type === 'month') mo = p.value;
+        else if (p.type === 'day') da = p.value;
+      }
+      y = pad2(y); mo = pad2(mo); da = pad2(da);
+      if (dateFmtName === 'iso') return y + '-' + mo + '-' + da;
+      if (dateFmtName === 'us') return mo + '/' + da + '/' + y;
+      return da + '/' + mo + '/' + y;
+    }
+    return dateFmt.format(d);
+  }
+
+  var lastDateText = null;
+
+  function render() {
+    // 同一时刻只取一次快照，时间与日期绝不错位
+    var real = new Date();
+    var d = shiftDate(real);
+
+    var parts = timeFmt.formatToParts(d);
+    var hh = '', mm = '', ss = '', period = '';
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (p.type === 'hour') hh = p.value;
+      else if (p.type === 'minute') mm = p.value;
+      else if (p.type === 'second') ss = p.value;
+      else if (p.type === 'dayPeriod') period = p.value;
+    }
+
+    setText(hhEl, pad2(hh));
+    setText(mmEl, pad2(mm));
+    setText(ssEl, pad2(ss));
+
+    if (period) {
+      setText(periodEl, period);
+      periodEl.hidden = false;
+    } else {
+      periodEl.hidden = true;
+    }
+
+    if (showDate) {
+      var ds = formatDate(d);
+      if (ds !== lastDateText) {
+        lastDateText = ds;
+        dateEl.textContent = ds;
+      }
+    }
+
+    if (blink) {
+      timeEl.classList.toggle('no-colon', d.getSeconds() % 2 === 1);
+    }
+  }
+
+  /* ---------------- 调度：对齐整秒，不累积漂移 ---------------- */
+
+  var timer = null;
+
+  function schedule() {
+    var now = Date.now();
+    // 下一个整秒 +5ms，落点绝对计算，卡顿后自动重新对齐而不会连跳
+    var target = Math.floor(now / 1000) * 1000 + 1005;
+    var delay = target - now;
+    if (delay < 1) delay = 1;
+    timer = setTimeout(function () { render(); schedule(); }, delay);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) render();
+  });
+  window.addEventListener('pageshow', function () { render(); });
+
+  /* ---------------- help / debug ---------------- */
+
+  if (help) {
+    var rows = [
+      ['tz', '时区', 'IANA 名称，如 Asia/Shanghai、America/New_York、Europe/London；local = 本机时区', DEFAULT_TZ],
+      ['offset', '固定偏移（tz 未指定时生效）', '分钟数，480 = UTC+8，-300 = UTC-5（不支持夏令时地区）', '—'],
+      ['color', '时间文字颜色', 'HEX，# 可省略', 'ffffff'],
+      ['outline', '描边颜色', 'HEX，# 可省略', '000000'],
+      ['size', '时间字号', '数字 = 源高度的百分比（10–70）；加 px 后缀为绝对像素', '46'],
+      ['dateSize', '日期字号', '数字 = 时间字号的百分比（0–200）；加 px 后缀为绝对像素', '22'],
+      ['outlineWidth', '描边粗细', '数字 = 时间字号的百分比；加 px 后缀为绝对像素', '5'],
+      ['dateColor', '日期颜色', 'HEX，默认与 color 相同', '—'],
+      ['h24', '24 小时制', '1 / 0（0 时在秒后显示 AM/PM）', '1'],
+      ['lang', '语言与本地化', 'BCP-47，如 en-US、ja-JP、de-DE；local = 跟随系统语言', 'zh-CN'],
+      ['dateFmt', '日期版式', 'iso / long / us / eu / weekday', 'long'],
+      ['blink', '冒号每秒闪烁', '1 / 0', '0'],
+      ['showDate', '显示日期', '1 / 0', '1'],
+      ['debug', '左下角显示解析结果', '1 / 0', '0'],
+      ['help', '显示本帮助', '1 / 0', '0']
+    ];
+    var html = '<h1>OBS 时钟 · 参数说明</h1>' +
+      '<p>在浏览器源 URL 后追加查询参数。颜色中的 <code>#</code> 必须写成 <code>%23</code>，或直接省略 <code>#</code>。</p>' +
+      '<table><thead><tr><th>参数</th><th>含义</th><th>取值</th><th>默认</th></tr></thead><tbody>';
+    for (var r = 0; r < rows.length; r++) {
+      html += '<tr><td><code>' + esc(rows[r][0]) + '</code></td><td>' + esc(rows[r][1]) +
+              '</td><td>' + esc(rows[r][2]) + '</td><td>' + esc(rows[r][3]) + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    var helpEl = document.getElementById('help');
+    helpEl.innerHTML = html;
+    helpEl.classList.add('show');
+  }
+
+  if (debug) {
+    var lines = [
+      'tz      = ' + tzInfo,
+      'lang    = ' + langInfo,
+      'dateFmt = ' + dateFmtName,
+      'h24     = ' + (h24 ? '1' : '0'),
+      'blink   = ' + (blink ? '1' : '0'),
+      'size    = ' + size.value + size.unit + '  dateSize ' + dateSize.value + dateSize.unit,
+      'outline = ' + ow.value + ow.unit,
+      'color   = ' + color + '  outline ' + outline
+    ];
+    if (warnings.length) lines.push('WARN    = ' + warnings.join(' | '));
+    var badgeEl = document.getElementById('badge');
+    badgeEl.textContent = lines.join('\n');
+    badgeEl.classList.add('show');
+  }
+
+  /* ---------------- 启动：首帧立刻出内容 ---------------- */
+  render();
+  schedule();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# 操作系统产物
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Node（dev/ 下只有零依赖的自测脚本，不需要 node_modules，防误装）
+node_modules/
+npm-debug.log*
+
+# 本地截图验证的临时产物
+dev/shots$1.png

@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="page.title">OBS 时钟 · 参数生成器</title>
+<style>
+  :root{
+    --bg:#11141a;
+    --panel:#171b23;
+    --line:#262d3a;
+    --text:#dfe6f0;
+    --muted:#8b97a8;
+    --accent:#4ea1ff;
+  }
+  *{ box-sizing: border-box; }
+  html, body{
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px;
+  }
+  body{ padding: 18px 20px 48px; }
+
+  header{ margin-bottom: 16px; }
+  .head{ display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1{ font-size: 17px; margin: 0; font-weight: 600; }
+  .sub{ margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+  .langswitch{
+    display: flex;
+    flex: 0 0 auto;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .langswitch button{
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    color: var(--muted);
+    padding: 4px 11px;
+    font-size: 12px;
+  }
+  .langswitch button:hover{ background: #1d2431; }
+  .langswitch button.on{ background: #22304a; color: #cfe3ff; }
+
+  .wrap{
+    display: grid;
+    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 900px){
+    .wrap{ grid-template-columns: 1fr; }
+  }
+
+  .col-right{
+    position: sticky;
+    top: 16px;
+    align-self: start;
+  }
+
+  .card{
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 13px 15px;
+    margin-bottom: 13px;
+  }
+  .card h2{
+    font-size: 11px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 11px;
+    font-weight: 600;
+  }
+
+  .row{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 9px 0;
+  }
+  .row > label{
+    flex: 0 0 92px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .row > .grow{ flex: 1; min-width: 0; }
+
+  input[type=text], input[type=number], select{
+    background: #0c0f14;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 6px 8px;
+    font-size: 13px;
+    font-family: inherit;
+    min-width: 0;
+    width: 100%;
+  }
+  input[type=text]:focus, input[type=number]:focus, select:focus{
+    outline: none;
+    border-color: var(--accent);
+  }
+  input[type=color]{
+    width: 42px;
+    height: 28px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #0c0f14;
+    padding: 2px;
+    cursor: pointer;
+    flex: 0 0 auto;
+  }
+  .hex{
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px;
+    color: var(--muted);
+    flex: 0 0 68px;
+  }
+  input[type=range]{
+    flex: 1;
+    accent-color: var(--accent);
+  }
+  input[type=checkbox]{
+    accent-color: var(--accent);
+    width: 15px;
+    height: 15px;
+    margin: 0;
+  }
+  .chk{
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: var(--text);
+    flex: 1;
+  }
+  .chk.tight{
+    flex: 1 1 auto;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .hint{
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.55;
+    margin: 8px 0 0;
+  }
+  .hint code{
+    background: rgba(255,255,255,.08);
+    padding: 0 4px;
+    border-radius: 3px;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+
+  .stage{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 250px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: #0b0e13;
+    padding: 14px;
+    overflow: auto;
+  }
+  /* .screen 严格等于源尺寸，代表 OBS 里浏览器源实际占的那块矩形 */
+  .screen{
+    position: relative;
+    flex: 0 0 auto;
+    border-radius: 4px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.10);
+    overflow: hidden;
+  }
+  .screen.checker{
+    background-color: #171b23;
+    background-image:
+      linear-gradient(45deg, #262d3a 25%, transparent 25%),
+      linear-gradient(-45deg, #262d3a 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #262d3a 75%),
+      linear-gradient(-45deg, transparent 75%, #262d3a 75%);
+    background-size: 18px 18px;
+    background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+  }
+  .screen.dark{ background: #14181f; }
+  .screen.light{ background: #eef1f6; }
+  .screen.photo{
+    background:
+      radial-gradient(circle at 22% 30%, #7fa8c9 0%, rgba(127,168,201,0) 55%),
+      linear-gradient(135deg, #1d2b3a 0%, #4f6f8c 45%, #d9b98c 78%, #6a4d33 100%);
+  }
+
+  iframe{
+    border: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+  }
+
+  .out{
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  #url{
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px;
+    flex: 1;
+  }
+
+  button{
+    background: #22304a;
+    color: #cfe3ff;
+    border: 1px solid #2f4468;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover{ background: #2a3d5e; }
+  button.primary{
+    background: #2b6cb0;
+    border-color: #3a7fca;
+    color: #fff;
+  }
+  button.primary:hover{ background: #3278c2; }
+
+  .presets{ display: flex; gap: 8px; flex-wrap: wrap; }
+  .presets button{ padding: 5px 10px; font-size: 12px; }
+
+  .toast{
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%);
+    background: #2b6cb0;
+    color: #fff;
+    padding: 7px 15px;
+    border-radius: 6px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s;
+  }
+  .toast.show{ opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head">
+    <h1 data-i18n="page.h1">OBS 时钟 · 参数生成器</h1>
+    <div class="langswitch" id="langSwitch">
+      <button type="button" data-lang="zh">中文</button>
+      <button type="button" data-lang="en">EN</button>
+    </div>
+  </div>
+  <p class="sub" data-i18n="page.sub">调好样式后，把最下面的 URL 粘到 OBS「浏览器源」的 URL 栏即可。所有参数都存在 URL 里，不需要改代码。</p>
+</header>
+
+<div class="wrap">
+
+  <div class="col-left">
+
+    <div class="card">
+      <h2 data-i18n="card.tz">时区</h2>
+      <div class="row">
+        <label for="tz" data-i18n="label.tz">时区</label>
+        <input type="text" id="tz" class="grow" list="tzlist" value="Asia/Shanghai"
+               spellcheck="false" autocomplete="off">
+        <datalist id="tzlist"></datalist>
+      </div>
+      <p class="hint" data-i18n-html="hint.tz">填 IANA 名称（<code>Area/City</code>）。有夏令时的地区会自动切换，不要手算偏移。</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="card.color">颜色</h2>
+      <div class="row">
+        <label for="color" data-i18n="label.color">时间</label>
+        <input type="color" id="color" value="#ffffff">
+        <span class="hex" id="colorHex">ffffff</span>
+      </div>
+      <div class="row">
+        <label for="outline" data-i18n="label.outline">描边</label>
+        <input type="color" id="outline" value="#000000">
+        <span class="hex" id="outlineHex">000000</span>
+      </div>
+      <div class="row">
+        <label for="dateColor" data-i18n="label.date">日期</label>
+        <label class="chk"><input type="checkbox" id="dateColorOn"> <span data-i18n="chk.dateColor">独立颜色</span></label>
+        <input type="color" id="dateColor" value="#ffffff" disabled>
+      </div>
+      <p class="hint" data-i18n="hint.color">描边颜色建议与画面主色调形成对比；纯黑描边在白底画面上最通用。</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="card.outline">描边粗细</h2>
+      <div class="row">
+        <label for="ow" data-i18n="label.ow">粗细</label>
+        <input type="range" id="ow" min="0" max="16" step="0.5" value="5">
+        <span class="hex" id="owOut">5%</span>
+      </div>
+      <p class="hint" data-i18n="hint.ow">按时间字号的百分比计算，换源尺寸时观感一致。0 = 不描边（白底画面上会看不清）。</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="card.font">字号</h2>
+      <div class="row">
+        <label for="fs" data-i18n="label.fs">时间</label>
+        <input type="range" id="fs" min="10" max="70" step="1" value="46">
+        <span class="hex" id="fsOut">46%</span>
+      </div>
+      <div class="row">
+        <label for="ds" data-i18n="label.ds">日期</label>
+        <input type="range" id="ds" min="5" max="100" step="1" value="22">
+        <span class="hex" id="dsOut">22%</span>
+      </div>
+      <p class="hint" data-i18n="hint.font">时间字号按源高度的百分比（10–70%）；日期字号按时间字号的百分比（5–100%）。放得太大时画面会被源尺寸裁切，把源尺寸调大即可。</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="card.format">格式</h2>
+      <div class="row">
+        <label for="h24" data-i18n="label.h24">小时制</label>
+        <select id="h24" class="grow">
+          <option value="24" data-i18n="opt.h24.24">24 小时（13:05）</option>
+          <option value="12" data-i18n="opt.h24.12">12 小时（01:05 PM）</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="lang" data-i18n="label.lang">语言</label>
+        <input type="text" id="lang" class="grow" list="langlist" value="zh-CN"
+               spellcheck="false" autocomplete="off">
+        <datalist id="langlist">
+          <option value="zh-CN">简体中文</option>
+          <option value="zh-TW">繁體中文</option>
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="ja-JP">日本語</option>
+          <option value="ko-KR">한국어</option>
+          <option value="de-DE">Deutsch</option>
+          <option value="fr-FR">Français</option>
+          <option value="es-ES">Español</option>
+          <option value="pt-BR">Português (BR)</option>
+          <option value="ru-RU">Русский</option>
+          <option value="it-IT">Italiano</option>
+          <option value="ar-EG">العربية</option>
+          <option value="hi-IN">हिन्दी</option>
+          <option value="th-TH">ไทย</option>
+          <option value="vi-VN">Tiếng Việt</option>
+        </datalist>
+      </div>
+      <div class="row">
+        <label></label>
+        <label class="chk tight" data-i18n-title="chk.langLocal.title" title="跟随运行 OBS 的这台机器的系统语言，勾选后忽略上面的输入">
+          <input type="checkbox" id="langLocal"> <span data-i18n="chk.langLocal">跟随系统语言</span>
+        </label>
+      </div>
+      <div class="row">
+        <label for="dateFmt" data-i18n="label.dateFmt">日期版式</label>
+        <select id="dateFmt" class="grow">
+          <option value="long" data-i18n="opt.dateFmt.long">本地长格式（含星期）</option>
+          <option value="iso" data-i18n="opt.dateFmt.iso">2026-10-26</option>
+          <option value="us" data-i18n="opt.dateFmt.us">10/26/2026</option>
+          <option value="eu" data-i18n="opt.dateFmt.eu">26/10/2026</option>
+          <option value="weekday" data-i18n="opt.dateFmt.weekday">只显示星期</option>
+        </select>
+      </div>
+      <div class="row">
+        <label data-i18n="label.show">显示</label>
+        <label class="chk"><input type="checkbox" id="showDate" checked> <span data-i18n="chk.showDate">日期</span></label>
+        <label class="chk"><input type="checkbox" id="blink"> <span data-i18n="chk.blink">冒号闪烁</span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="card.size">源尺寸与预览背景</h2>
+      <div class="row">
+        <label for="sw" data-i18n="label.size">宽 × 高</label>
+        <input type="number" id="sw" value="480" min="40" max="3840" step="1">
+        <input type="number" id="sh" value="140" min="30" max="2160" step="1">
+      </div>
+      <div class="row">
+        <label for="bg" data-i18n="label.bg">背景</label>
+        <select id="bg" class="grow">
+          <option value="checker" data-i18n="opt.bg.checker">棋盘（透明）</option>
+          <option value="dark" data-i18n="opt.bg.dark">深色画面</option>
+          <option value="light" data-i18n="opt.bg.light">浅色画面</option>
+          <option value="photo" data-i18n="opt.bg.photo">模拟实景</option>
+        </select>
+      </div>
+      <p class="hint" data-i18n="hint.size">这里只是模拟 OBS 里源的尺寸；OBS 中请把浏览器源宽高设成与显示区域 1:1 的像素尺寸。</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="card.presets">预设</h2>
+      <div class="presets">
+        <button data-preset="classic" data-i18n="preset.classic">经典白字黑边</button>
+        <button data-preset="gold" data-i18n="preset.gold">金色</button>
+        <button data-preset="mint" data-i18n="preset.mint">薄荷绿</button>
+        <button data-preset="minimal" data-i18n="preset.minimal">无描边</button>
+        <button data-preset="reset" data-i18n="preset.reset">重置</button>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-right">
+
+    <div class="card">
+      <h2 data-i18n="card.preview">预览</h2>
+      <div class="stage" id="stage">
+        <div class="screen checker" id="screen">
+          <iframe id="frame" data-i18n-title="frame.title" title="时钟预览"></iframe>
+        </div>
+      </div>
+      <p class="hint" data-i18n="hint.preview">预览窗口大小 = 上面设定的源尺寸；棋盘格代表透明区域。</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="card.url">OBS 浏览器源 URL</h2>
+      <div class="out">
+        <input type="text" id="url" readonly spellcheck="false">
+        <button class="primary" id="copy" data-i18n="btn.copy">复制</button>
+      </div>
+      <p class="hint" data-i18n-html="hint.url">
+        粘贴到 OBS「浏览器源 → URL」栏，并<b>取消勾选「本地文件」</b>（勾选时 OBS 只认文件路径，无法带参数）。
+        颜色已自动写成不带 <code>#</code> 的形式——<code>#</code> 在 URL 里是 fragment 分隔符，会把后续参数全部截断；
+        时区里的 <code>/</code> 保持原样，便于阅读。
+      </p>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="toast" id="toast" data-i18n="toast.copied">已复制</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var tzInput = $('tz');
+  var colorInput = $('color');
+  var colorHex = $('colorHex');
+  var outlineInput = $('outline');
+  var outlineHex = $('outlineHex');
+  var dateColorOn = $('dateColorOn');
+  var dateColorInput = $('dateColor');
+  var owInput = $('ow');
+  var owOut = $('owOut');
+  var fsInput = $('fs');
+  var fsOut = $('fsOut');
+  var dsInput = $('ds');
+  var dsOut = $('dsOut');
+  var h24Input = $('h24');
+  var langInput = $('lang');
+  var langLocalInput = $('langLocal');
+  var dateFmtInput = $('dateFmt');
+  var blinkInput = $('blink');
+  var showDateInput = $('showDate');
+  var swInput = $('sw');
+  var shInput = $('sh');
+  var bgInput = $('bg');
+  var frame = $('frame');
+  var screenEl = $('screen');
+  var urlInput = $('url');
+
+  var DEFAULT_TZ = 'Asia/Shanghai';
+  var DEFAULT_LANG = 'zh-CN';
+  var DEFAULT_SIZE = 46;
+  var DEFAULT_DATE_SIZE = 22;
+
+  // 与 index.html 保持一致的手写编码：保留 / 和 :，让 tz 在 OBS 里可读
+  function enc(v) {
+    return String(v).replace(/[^A-Za-z0-9\-_.~\/:]/g, function (c) {
+      return encodeURIComponent(c);
+    });
+  }
+
+  function buildQuery() {
+    var pairs = [];
+    function add(k, v) { pairs.push(enc(k) + '=' + enc(v)); }
+
+    add('tz', tzInput.value.trim() || DEFAULT_TZ);
+
+    if (colorInput.value.toLowerCase() !== '#ffffff') {
+      add('color', colorInput.value.slice(1).toLowerCase());
+    }
+    if (outlineInput.value.toLowerCase() !== '#000000') {
+      add('outline', outlineInput.value.slice(1).toLowerCase());
+    }
+
+    var ow = parseFloat(owInput.value);
+    if (isFinite(ow) && ow !== 5) add('outlineWidth', String(ow));
+
+    var fs = parseFloat(fsInput.value);
+    if (isFinite(fs) && fs !== DEFAULT_SIZE) add('size', String(fs));
+
+    var ds = parseFloat(dsInput.value);
+    if (isFinite(ds) && ds !== DEFAULT_DATE_SIZE) add('dateSize', String(ds));
+
+    if (dateColorOn.checked &&
+        dateColorInput.value.toLowerCase() !== colorInput.value.toLowerCase()) {
+      add('dateColor', dateColorInput.value.slice(1).toLowerCase());
+    }
+
+    if (h24Input.value === '12') add('h24', '0');
+
+    if (langLocalInput.checked) {
+      add('lang', 'local');
+    } else {
+      var lang = langInput.value.trim();
+      if (lang && lang !== DEFAULT_LANG) add('lang', lang);
+    }
+
+    if (dateFmtInput.value !== 'long') add('dateFmt', dateFmtInput.value);
+    if (blinkInput.checked) add('blink', '1');
+    if (!showDateInput.checked) add('showDate', '0');
+
+    return pairs.join('&');
+  }
+
+  function buildUrl() {
+    var u = new URL('index.html', location.href);
+    var qs = buildQuery();
+    u.search = qs ? '?' + qs : '';
+    return u.href;
+  }
+
+  function updateStageBackground() {
+    screenEl.className = 'screen ' + bgInput.value;
+  }
+
+  function updateFrameSize() {
+    var w = parseInt(swInput.value, 10);
+    var h = parseInt(shInput.value, 10);
+    if (!isFinite(w) || w < 40) w = 40;
+    if (!isFinite(h) || h < 30) h = 30;
+    screenEl.style.width = w + 'px';
+    screenEl.style.height = h + 'px';
+  }
+
+  function refreshHexLabels() {
+    colorHex.textContent = colorInput.value.slice(1).toLowerCase();
+    outlineHex.textContent = outlineInput.value.slice(1).toLowerCase();
+    owOut.textContent = parseFloat(owInput.value) + '%';
+    fsOut.textContent = parseFloat(fsInput.value) + '%';
+    dsOut.textContent = parseFloat(dsInput.value) + '%';
+  }
+
+  var debounceId = null;
+  function scheduleUpdate(immediate) {
+    clearTimeout(debounceId);
+    debounceId = setTimeout(function () {
+      var href = buildUrl();
+      urlInput.value = href;
+      frame.src = href;
+    }, immediate ? 0 : 140);
+  }
+
+  function updateAll(immediate) {
+    refreshHexLabels();
+    updateFrameSize();
+    updateStageBackground();
+    scheduleUpdate(immediate);
+  }
+
+  /* ---------- 事件绑定 ---------- */
+
+  ['input', 'change'].forEach(function (evt) {
+    tzInput.addEventListener(evt, function () { scheduleUpdate(false); });
+    langInput.addEventListener(evt, function () { scheduleUpdate(false); });
+    swInput.addEventListener(evt, function () { updateFrameSize(); scheduleUpdate(false); });
+    shInput.addEventListener(evt, function () { updateFrameSize(); scheduleUpdate(false); });
+  });
+
+  colorInput.addEventListener('input', function () {
+    if (!dateColorOn.checked) {
+      // 日期跟随时间颜色时，保持 picker 同步
+      dateColorInput.value = colorInput.value;
+    }
+    refreshHexLabels();
+    scheduleUpdate(false);
+  });
+
+  outlineInput.addEventListener('input', function () {
+    refreshHexLabels();
+    scheduleUpdate(false);
+  });
+
+  dateColorInput.addEventListener('input', function () {
+    if (!dateColorOn.checked) dateColorOn.checked = true;
+    scheduleUpdate(false);
+  });
+
+  dateColorOn.addEventListener('change', function () {
+    dateColorInput.disabled = !dateColorOn.checked;
+    if (dateColorOn.checked && !dateColorInput.value) dateColorInput.value = colorInput.value;
+    scheduleUpdate(false);
+  });
+
+  owInput.addEventListener('input', function () {
+    refreshHexLabels();
+    scheduleUpdate(false);
+  });
+
+  fsInput.addEventListener('input', function () {
+    refreshHexLabels();
+    scheduleUpdate(false);
+  });
+
+  dsInput.addEventListener('input', function () {
+    refreshHexLabels();
+    scheduleUpdate(false);
+  });
+
+  langLocalInput.addEventListener('change', function () {
+    langInput.disabled = langLocalInput.checked;
+    scheduleUpdate(true);
+  });
+
+  h24Input.addEventListener('change', function () { scheduleUpdate(true); });
+  dateFmtInput.addEventListener('change', function () { scheduleUpdate(true); });
+  blinkInput.addEventListener('change', function () { scheduleUpdate(true); });
+  showDateInput.addEventListener('change', function () { scheduleUpdate(true); });
+  bgInput.addEventListener('change', updateStageBackground);
+
+  /* ---------- 预设 ---------- */
+
+  var PRESETS = {
+    classic: { color: '#ffffff', outline: '#000000', ow: '5',  h24: '24', blink: false, showDate: true,  dateOn: false },
+    gold:    { color: '#ffd54a', outline: '#241a00', ow: '6',  h24: '24', blink: false, showDate: true,  dateOn: false },
+    mint:    { color: '#7cf7a0', outline: '#00210f', ow: '6',  h24: '24', blink: false, showDate: true,  dateOn: false },
+    minimal: { color: '#ffffff', outline: '#000000', ow: '0',  h24: '24', blink: false, showDate: true,  dateOn: false }
+  };
+
+  function applyPreset(name) {
+    var p = PRESETS[name];
+    if (!p) return;
+    colorInput.value = p.color;
+    outlineInput.value = p.outline;
+    owInput.value = p.ow;
+    h24Input.value = p.h24;
+    blinkInput.checked = p.blink;
+    showDateInput.checked = p.showDate;
+    dateColorOn.checked = !!p.dateOn;
+    dateColorInput.disabled = !p.dateOn;
+    dateColorInput.value = p.color;
+    updateAll(true);
+  }
+
+  document.querySelectorAll('[data-preset]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var name = btn.getAttribute('data-preset');
+      if (name === 'reset') {
+        tzInput.value = DEFAULT_TZ;
+        langDirty = false;
+        langInput.value = currentLang === 'zh' ? 'zh-CN' : 'en-US';
+        langLocalInput.checked = false;
+        langInput.disabled = false;
+        dateFmtInput.value = 'long';
+        fsInput.value = String(DEFAULT_SIZE);
+        dsInput.value = String(DEFAULT_DATE_SIZE);
+        swInput.value = '480';
+        shInput.value = '140';
+        bgInput.value = 'checker';
+        applyPreset('classic');
+      } else {
+        applyPreset(name);
+      }
+    });
+  });
+
+  /* ---------- 复制 ---------- */
+
+  var toastEl = $('toast');
+  var toastTimer = null;
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1400);
+  }
+
+  function fallbackCopy() {
+    urlInput.select();
+    urlInput.setSelectionRange(0, urlInput.value.length);
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    toast(ok ? T('toast.copied') : T('toast.copyFail'));
+  }
+
+  $('copy').addEventListener('click', function () {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(urlInput.value).then(
+        function () { toast(T('toast.copied')); },
+        fallbackCopy
+      );
+    } else {
+      fallbackCopy();
+    }
+  });
+
+  /* ---------- 界面语言：中文 / English ---------- */
+
+  var LS_KEY = 'obsClockBuilder.lang';
+  var currentLang = 'en';
+  var langDirty = false;
+
+  var I18N = {
+    zh: {
+      'page.title': 'OBS 时钟 · 参数生成器',
+      'page.h1': 'OBS 时钟 · 参数生成器',
+      'page.sub': '调好样式后，把最下面的 URL 粘到 OBS「浏览器源」的 URL 栏即可。所有参数都存在 URL 里，不需要改代码。',
+      'card.tz': '时区',
+      'card.color': '颜色',
+      'card.outline': '描边粗细',
+      'card.font': '字号',
+      'card.format': '格式',
+      'card.size': '源尺寸与预览背景',
+      'card.presets': '预设',
+      'card.preview': '预览',
+      'card.url': 'OBS 浏览器源 URL',
+      'label.tz': '时区',
+      'label.color': '时间',
+      'label.outline': '描边',
+      'label.date': '日期',
+      'label.ow': '粗细',
+      'label.fs': '时间',
+      'label.ds': '日期',
+      'label.h24': '小时制',
+      'label.lang': '语言',
+      'label.dateFmt': '日期版式',
+      'label.show': '显示',
+      'label.size': '宽 × 高',
+      'label.bg': '背景',
+      'chk.dateColor': '独立颜色',
+      'chk.langLocal': '跟随系统语言',
+      'chk.langLocal.title': '跟随运行 OBS 的这台机器的系统语言，勾选后忽略上面的输入',
+      'chk.showDate': '日期',
+      'chk.blink': '冒号闪烁',
+      'opt.h24.24': '24 小时（13:05）',
+      'opt.h24.12': '12 小时（01:05 PM）',
+      'opt.dateFmt.long': '本地长格式（含星期）',
+      'opt.dateFmt.iso': '2026-10-26',
+      'opt.dateFmt.us': '10/26/2026',
+      'opt.dateFmt.eu': '26/10/2026',
+      'opt.dateFmt.weekday': '只显示星期',
+      'opt.bg.checker': '棋盘（透明）',
+      'opt.bg.dark': '深色画面',
+      'opt.bg.light': '浅色画面',
+      'opt.bg.photo': '模拟实景',
+      'hint.tz': '填 IANA 名称（<code>Area/City</code>）。有夏令时的地区会自动切换，不要手算偏移。',
+      'hint.color': '描边颜色建议与画面主色调形成对比；纯黑描边在白底画面上最通用。',
+      'hint.ow': '按时间字号的百分比计算，换源尺寸时观感一致。0 = 不描边（白底画面上会看不清）。',
+      'hint.font': '时间字号按源高度的百分比（10–70%）；日期字号按时间字号的百分比（5–100%）。放得太大时画面会被源尺寸裁切，把源尺寸调大即可。',
+      'hint.size': '这里只是模拟 OBS 里源的尺寸；OBS 中请把浏览器源宽高设成与显示区域 1:1 的像素尺寸。',
+      'hint.preview': '预览窗口大小 = 上面设定的源尺寸；棋盘格代表透明区域。',
+      'hint.url': '粘贴到 OBS「浏览器源 → URL」栏，并<b>取消勾选「本地文件」</b>（勾选时 OBS 只认文件路径，无法带参数）。颜色已自动写成不带 <code>#</code> 的形式——<code>#</code> 在 URL 里是 fragment 分隔符，会把后续参数全部截断；时区里的 <code>/</code> 保持原样，便于阅读。',
+      'preset.classic': '经典白字黑边',
+      'preset.gold': '金色',
+      'preset.mint': '薄荷绿',
+      'preset.minimal': '无描边',
+      'preset.reset': '重置',
+      'btn.copy': '复制',
+      'toast.copied': '已复制',
+      'toast.copyFail': '复制失败，请手动选中',
+      'frame.title': '时钟预览'
+    },
+    en: {
+      'page.title': 'OBS Clock · Configurator',
+      'page.h1': 'OBS Clock · Configurator',
+      'page.sub': 'Tune the look, then paste the URL below into the Browser source of OBS. Every setting lives in the URL — no code to edit.',
+      'card.tz': 'Time zone',
+      'card.color': 'Colours',
+      'card.outline': 'Outline',
+      'card.font': 'Text size',
+      'card.format': 'Format',
+      'card.size': 'Source size & preview',
+      'card.presets': 'Presets',
+      'card.preview': 'Preview',
+      'card.url': 'Browser source URL',
+      'label.tz': 'Zone',
+      'label.color': 'Time',
+      'label.outline': 'Outline',
+      'label.date': 'Date',
+      'label.ow': 'Width',
+      'label.fs': 'Time',
+      'label.ds': 'Date',
+      'label.h24': 'Clock',
+      'label.lang': 'Language',
+      'label.dateFmt': 'Date style',
+      'label.show': 'Show',
+      'label.size': 'W × H',
+      'label.bg': 'Background',
+      'chk.dateColor': 'Own colour',
+      'chk.langLocal': 'Follow system',
+      'chk.langLocal.title': 'Follow the OS language of the machine running OBS; ignores the field above',
+      'chk.showDate': 'Date',
+      'chk.blink': 'Blink colons',
+      'opt.h24.24': '24-hour (13:05)',
+      'opt.h24.12': '12-hour (01:05 PM)',
+      'opt.dateFmt.long': 'Locale long (with weekday)',
+      'opt.dateFmt.iso': '2026-10-26',
+      'opt.dateFmt.us': '10/26/2026',
+      'opt.dateFmt.eu': '26/10/2026',
+      'opt.dateFmt.weekday': 'Weekday only',
+      'opt.bg.checker': 'Checker (transparent)',
+      'opt.bg.dark': 'Dark scene',
+      'opt.bg.light': 'Light scene',
+      'opt.bg.photo': 'Photo',
+      'hint.tz': 'Use an IANA name (<code>Area/City</code>). DST regions switch automatically — never hand-calculate the offset.',
+      'hint.color': 'Pick an outline colour that contrasts with your scene; pure black is the safest on light backgrounds.',
+      'hint.ow': 'Percentage of the time font size, so the look holds at any source size. 0 = no outline (unreadable on white).',
+      'hint.font': 'Time size as a percentage of the source height (10–70%); date size as a percentage of the time size (5–100%). Too large and it clips at the source edge — enlarge the source instead.',
+      'hint.size': 'This only simulates the source size. In OBS set the browser source width and height to the exact pixel size of its on-canvas area.',
+      'hint.preview': 'The preview is the exact source size set above; the checkerboard stands for transparency.',
+      'hint.url': 'Paste it into the Browser source URL field and <b>untick “Local file”</b> (while it is ticked OBS only accepts a file path and drops the parameters). Colours are written without <code>#</code> — it is the fragment separator and would truncate everything after it. Slashes in the time zone are left as-is for readability.',
+      'preset.classic': 'Classic',
+      'preset.gold': 'Gold',
+      'preset.mint': 'Mint',
+      'preset.minimal': 'No outline',
+      'preset.reset': 'Reset',
+      'btn.copy': 'Copy',
+      'toast.copied': 'Copied',
+      'toast.copyFail': 'Copy failed — select and copy manually',
+      'frame.title': 'Clock preview'
+    }
+  };
+
+  /* 时区候选：值 / 中文名 / 英文名 / 备注 */
+  var TZ_LIST = [
+    ['Asia/Shanghai', '北京 / 上海', 'Beijing / Shanghai', 'UTC+8'],
+    ['Asia/Hong_Kong', '香港', 'Hong Kong', ''],
+    ['Asia/Taipei', '台北', 'Taipei', ''],
+    ['Asia/Tokyo', '东京', 'Tokyo', 'UTC+9'],
+    ['Asia/Seoul', '首尔', 'Seoul', ''],
+    ['Asia/Singapore', '新加坡', 'Singapore', ''],
+    ['Asia/Bangkok', '曼谷', 'Bangkok', ''],
+    ['Asia/Jakarta', '雅加达', 'Jakarta', ''],
+    ['Asia/Kolkata', '新德里', 'New Delhi', 'UTC+5:30'],
+    ['Asia/Dubai', '迪拜', 'Dubai', ''],
+    ['Europe/London', '伦敦', 'London', ''],
+    ['Europe/Dublin', '都柏林', 'Dublin', ''],
+    ['Europe/Paris', '巴黎', 'Paris', ''],
+    ['Europe/Berlin', '柏林', 'Berlin', ''],
+    ['Europe/Madrid', '马德里', 'Madrid', ''],
+    ['Europe/Rome', '罗马', 'Rome', ''],
+    ['Europe/Moscow', '莫斯科', 'Moscow', ''],
+    ['Europe/Istanbul', '伊斯坦布尔', 'Istanbul', ''],
+    ['America/New_York', '纽约', 'New York', ''],
+    ['America/Chicago', '芝加哥', 'Chicago', ''],
+    ['America/Denver', '丹佛', 'Denver', ''],
+    ['America/Los_Angeles', '洛杉矶', 'Los Angeles', ''],
+    ['America/Toronto', '多伦多', 'Toronto', ''],
+    ['America/Mexico_City', '墨西哥城', 'Mexico City', ''],
+    ['America/Sao_Paulo', '圣保罗', 'Sao Paulo', ''],
+    ['America/Bogota', '波哥大', 'Bogota', ''],
+    ['Australia/Sydney', '悉尼', 'Sydney', ''],
+    ['Australia/Perth', '珀斯', 'Perth', ''],
+    ['Pacific/Auckland', '奥克兰', 'Auckland', ''],
+    ['Africa/Cairo', '开罗', 'Cairo', ''],
+    ['Africa/Johannesburg', '约翰内斯堡', 'Johannesburg', ''],
+    ['Africa/Lagos', '拉各斯', 'Lagos', ''],
+    ['UTC', 'UTC', 'UTC', '']
+  ];
+
+  function each(sel, fn) {
+    var list = document.querySelectorAll(sel);
+    for (var i = 0; i < list.length; i++) fn(list[i]);
+  }
+
+  function T(key) {
+    var d = I18N[currentLang] || I18N.en;
+    return d[key] != null ? d[key] : key;
+  }
+
+  function buildTzDatalist(lang) {
+    var el = $('tzlist');
+    if (!el) return;
+    var col = lang === 'zh' ? 1 : 2;
+    var html = '';
+    for (var i = 0; i < TZ_LIST.length; i++) {
+      var row = TZ_LIST[i];
+      html += '<option value="' + row[0] + '">' + row[col] + (row[3] ? ' ' + row[3] : '') + '</option>';
+    }
+    el.innerHTML = html;
+  }
+
+  /* 优先用上次手动选过的语言，其次是系统语言；系统不是中文就用英文 */
+  function detectLang() {
+    var saved = null;
+    try { saved = localStorage.getItem(LS_KEY); } catch (e) { saved = null; }
+    if (saved === 'zh' || saved === 'en') return saved;
+    var list = (navigator.languages && navigator.languages.length)
+      ? navigator.languages
+      : [navigator.language || ''];
+    var first = String(list[0] || '').toLowerCase();
+    return first.indexOf('zh') === 0 ? 'zh' : 'en';
+  }
+
+  function setLang(lang, opts) {
+    if (lang !== 'zh' && lang !== 'en') lang = 'en';
+    currentLang = lang;
+    var d = I18N[lang];
+
+    each('[data-i18n]', function (el) {
+      var k = el.getAttribute('data-i18n');
+      if (d[k] != null) el.textContent = d[k];
+    });
+    each('[data-i18n-html]', function (el) {
+      var k = el.getAttribute('data-i18n-html');
+      if (d[k] != null) el.innerHTML = d[k];
+    });
+    each('[data-i18n-title]', function (el) {
+      var k = el.getAttribute('data-i18n-title');
+      if (d[k] != null) el.setAttribute('title', d[k]);
+    });
+    each('#langSwitch [data-lang]', function (btn) {
+      if (btn.getAttribute('data-lang') === lang) btn.classList.add('on');
+      else btn.classList.remove('on');
+    });
+
+    if (document.documentElement) document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+    buildTzDatalist(lang);
+
+    // 时钟自身的语种跟着界面走，但只用户没手动改过 lang 时才动
+    if (!langDirty && !langLocalInput.checked) {
+      var cur = String(langInput.value || '').toLowerCase();
+      if (cur === 'zh-cn' || cur === 'en-us' || cur === '') {
+        langInput.value = lang === 'zh' ? 'zh-CN' : 'en-US';
+      }
+    }
+
+    if (opts && opts.silent) return;
+    try { localStorage.setItem(LS_KEY, lang); } catch (e) {}
+    scheduleUpdate(true);
+  }
+
+  langInput.addEventListener('input', function () { langDirty = true; });
+
+  each('#langSwitch [data-lang]', function (btn) {
+    btn.addEventListener('click', function () {
+      setLang(btn.getAttribute('data-lang'));
+    });
+  });
+
+  // 只读入口：方便自动化测试，也方便二次开发直接调 setLang
+  window.obsClockBuilder = {
+    get lang() { return currentLang; },
+    setLang: setLang,
+    detectLang: detectLang,
+    dict: I18N
+  };
+
+  /* ---------- 启动 ---------- */
+
+  if (!dateColorInput.value) dateColorInput.value = colorInput.value;
+  setLang(detectLang(), { silent: true });
+  updateAll(true);
+})();
+</script>
+</body>
+</html>
